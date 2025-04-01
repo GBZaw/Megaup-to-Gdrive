@@ -5,6 +5,13 @@ import telegram
 from telegram.ext import Application, CommandHandler, MessageHandler
 from telegram.ext import filters
 from aiohttp import web
+from google.oauth2.credentials import Credentials
+from google_auth_oauthlib.flow import InstalledAppFlow
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaFileUpload
+
+# Google Drive API အတွက် SCOPES
+SCOPES = ['https://www.googleapis.com/auth/drive.file']
 
 # Telegram Bot Token ကို environment variable ကနေ ဖတ်ပါမယ်
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -13,9 +20,36 @@ RAILWAY_URL = os.getenv("RAILWAY_URL")
 # Bot ကို ဖန်တီးပါ
 app = Application.builder().token(BOT_TOKEN).build()
 
+# Google Drive Service ကို ဖန်တီးဖို့ function
+def get_drive_service():
+    creds = None
+    # token.json ဖိုင်ကနေ credentials ကို ဖတ်ပါ
+    if os.path.exists('token.json'):
+        creds = Credentials.from_authorized_user_file('token.json', SCOPES)
+    # အကယ်၍ credentials မရှိရင် သို့မဟုတ် မမှန်ကန်ရင် အသစ်ဖန်တီးပါ
+    if not creds or not creds.valid:
+        flow = InstalledAppFlow.from_client_secrets_file('credentials.json', SCOPES)
+        creds = flow.run_local_server(port=0)
+        # ဖန်တီးထားတဲ့ credentials ကို token.json ဖိုင်ထဲ သိမ်းပါ
+        with open('token.json', 'w') as token:
+            token.write(creds.to_json())
+    return build('drive', 'v3', credentials=creds)
+
+# Google Drive ထဲ ဖိုင်အပ်လုဒ်လုပ်ဖို့ function
+def upload_to_drive(file_path, file_name):
+    try:
+        drive_service = get_drive_service()
+        file_metadata = {'name': file_name}
+        media = MediaFileUpload(file_path)
+        file = drive_service.files().create(body=file_metadata, media_body=media, fields='id').execute()
+        return file.get('id')
+    except Exception as e:
+        print(f"Error uploading to Google Drive: {str(e)}")
+        return None
+
 # Start command handler
 async def start(update, context):
-    await update.message.reply_text("Hello! Please send me a MegaUp direct download link, and I'll download it to your local storage.")
+    await update.message.reply_text("Hello! Please send me a MegaUp direct download link, and I'll upload it to your Google Drive.")
 
 # Message handler to process MegaUp links
 async def handle_message(update, context):
@@ -40,7 +74,18 @@ async def handle_message(update, context):
         try:
             os.system(f'wget -O "{save_path}" "{message_text}"')
             if os.path.exists(save_path):
-                await update.message.reply_text(f"File downloaded successfully: {file_name}")
+                await update.message.reply_text(f"File downloaded successfully: {file_name}. Uploading to Google Drive...")
+
+                # Upload to Google Drive
+                file_id = upload_to_drive(save_path, file_name)
+                if file_id:
+                    file_url = f"https://drive.google.com/file/d/{file_id}/view"
+                    await update.message.reply_text(f"File uploaded to Google Drive: {file_url}")
+                else:
+                    await update.message.reply_text("Failed to upload to Google Drive.")
+                
+                # Delete the local file after uploading
+                os.remove(save_path)
             else:
                 await update.message.reply_text("Download failed: File not found.")
         except Exception as e:
