@@ -4,9 +4,11 @@ import requests
 import telegram
 from telegram.ext import Application, CommandHandler, MessageHandler
 from telegram.ext import filters
+from aiohttp import web
 
 # Telegram Bot Token ကို environment variable ကနေ ဖတ်ပါမယ်
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+RAILWAY_URL = os.getenv("RAILWAY_URL")
 
 # Bot ကို ဖန်တီးပါ
 app = Application.builder().token(BOT_TOKEN).build()
@@ -50,14 +52,41 @@ async def handle_message(update, context):
 app.add_handler(CommandHandler("start", start))
 app.add_handler(MessageHandler(filters.Text() & ~filters.Command(), handle_message))
 
-# Set up webhook
-async def set_webhook():
-    railway_url = os.getenv("RAILWAY_URL")  # Railway.app က ပေးတဲ့ URL
-    webhook_url = f"{railway_url}/{BOT_TOKEN}"
-    await app.bot.set_webhook(url=webhook_url)
+# Webhook handler for Railway.app
+async def webhook(request):
+    try:
+        update = telegram.Update.de_json(await request.json(), app.bot)
+        if update:
+            await app.process_update(update)
+        return web.Response(text="OK")
+    except Exception as e:
+        print(f"Error in webhook: {str(e)}")
+        return web.Response(text="Error", status=500)
 
-# Run the bot with webhook
+# Set up the webhook server
+async def main():
+    # Set webhook
+    webhook_url = f"{RAILWAY_URL}/{BOT_TOKEN}"
+    await app.bot.set_webhook(url=webhook_url)
+    print(f"Webhook set to: {webhook_url}")
+
+    # Start the webhook server
+    port = int(os.getenv("PORT", 8080))  # Railway.app မှာ PORT ကို သတ်မှတ်ထားရင် အဲဒီ port ကို သုံးမယ်
+    web_app = web.Application()
+    web_app.router.add_post(f"/{BOT_TOKEN}", webhook)
+    runner = web.AppRunner(web_app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
+
+    print(f"Bot is running with webhook on port {port}...")
+
+    # Keep the application running
+    await app.initialize()
+    await app.start()
+    # Run forever
+    await asyncio.Event().wait()
+
 if __name__ == "__main__":
     import asyncio
-    asyncio.run(set_webhook())
-    print("Bot is running with webhook...")
+    asyncio.run(main())
