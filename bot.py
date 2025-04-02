@@ -99,7 +99,7 @@ def upload_to_drive(file_path, file_name):
         file_id = response.get('id')
         print(f"File uploaded to Google Drive with ID: {file_id}")
 
-        # ဖိုင်ကို မျှဝေလို့ရအောင် လုပ်ပါ
+        # ဖိုင်ကို မျှဝေလို့ရအောင် permission သတ်မှတ်ပါ
         try:
             service.permissions().create(
                 fileId=file_id,
