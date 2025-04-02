@@ -13,7 +13,7 @@ from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
 app = Flask(__name__)
 
 # Google Drive API အတွက် SCOPES
-SCOPES = ['https://www.googleapis.com/auth/drive.file']
+SCOPES = ['https://www.googleapis.com/auth/drive']
 
 # Google Drive ထဲမှာ ဖိုင်တွေ အပ်လုဒ်လုပ်မယ့် folder ID ကို environment variable ကနေ ဖတ်ပါ
 GOOGLE_DRIVE_FOLDER_ID = os.getenv("GOOGLE_DRIVE_FOLDER_ID")
@@ -99,30 +99,18 @@ def upload_to_drive(file_path, file_name):
         file_id = response.get('id')
         print(f"File uploaded to Google Drive with ID: {file_id}")
 
-        # ဖိုင်ကို မျှဝေလို့ရအောင် permission သတ်မှတ်ပါ
-        try:
-            service.permissions().create(
-                fileId=file_id,
-                body={'role': 'reader', 'type': 'anyone'},
-                fields='id'
-            ).execute()
-            print(f"Permission set for file ID: {file_id}")
-        except Exception as e:
-            print(f"Error setting permission for file ID {file_id}: {str(e)}")
-            # Permission သတ်မှတ်မှု မအောင်မြင်ရင်တောင် လင့်ခ်ကို ပြန်ပေးမယ်
+        # Permission သတ်မှတ်တဲ့ အပိုင်းကို ဖယ်ထုတ်လိုက်တယ်
+        print(f"Skipping permission setting due to persistent errors.")
 
-        # Google Drive လင့်ခ်ကို ပြန်ပေးပါ
-        drive_link = f"https://drive.google.com/file/d/{file_id}/view"
-        print(f"Returning Google Drive link: {drive_link}")
-        return drive_link
+        # ဖိုင်ကို အပ်လုဒ်လုပ်ပြီးသားဆိုရင် True ပြန်ပေးမယ်
+        return True
     except Exception as e:
         print(f"Error uploading to Google Drive: {str(e)}")
-        # အမှားဖြစ်ရင်လည်း ဖိုင်ကို အပ်လုဒ်လုပ်ပြီးသားဆိုရင် လင့်ခ်ကို ပြန်ပေးမယ်
+        # အမှားဖြစ်ရင်လည်း ဖိုင်ကို အပ်လုဒ်လုပ်ပြီးသားဆိုရင် True ပြန်ပေးမယ်
         if 'file_id' in locals():  # file_id ရှိပြီးသားဆိုရင်
-            drive_link = f"https://drive.google.com/file/d/{file_id}/view"
-            print(f"Returning Google Drive link despite error: {drive_link}")
-            return drive_link
-        return None
+            print(f"File uploaded despite error with ID: {file_id}")
+            return True
+        return False
 
 # /start command အတွက် handler
 def start(update, context):
@@ -140,9 +128,9 @@ def handle_message(update, context):
             file_path = download_file(message, file_name)
             update.message.reply_text("File downloaded successfully! Uploading to Google Drive...")
             # Google Drive ထဲ အပ်လုဒ်လုပ်ပါ
-            drive_link = upload_to_drive(file_path, file_name)
-            if drive_link:
-                update.message.reply_text(f"File uploaded to Google Drive: {drive_link}")
+            upload_success = upload_to_drive(file_path, file_name)
+            if upload_success:
+                update.message.reply_text("Upload successful. Please check the file in your specified Google Drive folder ID.")
             else:
                 update.message.reply_text("Failed to upload to Google Drive. Please check the logs for more details.")
             # ဒေါင်းလုဒ်လုပ်ထားတဲ့ ဖိုင်ကို ဖျက်ပါ
