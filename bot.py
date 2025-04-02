@@ -117,6 +117,11 @@ def upload_to_drive(file_path, file_name):
         return drive_link
     except Exception as e:
         print(f"Error uploading to Google Drive: {str(e)}")
+        # အမှားဖြစ်ရင်လည်း ဖိုင်ကို အပ်လုဒ်လုပ်ပြီးသားဆိုရင် လင့်ခ်ကို ပြန်ပေးမယ်
+        if 'file_id' in locals():  # file_id ရှိပြီးသားဆိုရင်
+            drive_link = f"https://drive.google.com/file/d/{file_id}/view"
+            print(f"Returning Google Drive link despite error: {drive_link}")
+            return drive_link
         return None
 
 # /start command အတွက် handler
@@ -139,7 +144,7 @@ def handle_message(update, context):
             if drive_link:
                 update.message.reply_text(f"File uploaded to Google Drive: {drive_link}")
             else:
-                update.message.reply_text("Failed to upload to Google Drive.")
+                update.message.reply_text("Failed to upload to Google Drive. Please check the logs for more details.")
             # ဒေါင်းလုဒ်လုပ်ထားတဲ့ ဖိုင်ကို ဖျက်ပါ
             if os.path.exists(file_path):
                 os.remove(file_path)
