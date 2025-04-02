@@ -15,6 +15,9 @@ app = Flask(__name__)
 # Google Drive API အတွက် SCOPES
 SCOPES = ['https://www.googleapis.com/auth/drive.file']
 
+# Google Drive ထဲမှာ ဖိုင်တွေ အပ်လုဒ်လုပ်မယ့် folder ID ကို environment variable ကနေ ဖတ်ပါ
+GOOGLE_DRIVE_FOLDER_ID = os.getenv("GOOGLE_DRIVE_FOLDER_ID")
+
 # Telegram Bot Token ကို environment variable ကနေ ဖတ်ပါ
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 RAILWAY_URL = os.getenv("RAILWAY_URL")
@@ -67,11 +70,21 @@ def download_file(url, file_name):
     subprocess.run(["wget", url, "-O", download_path])
     return download_path
 
-# Google Drive ထဲ ဖိုင်ကို အပ်လုဒ်လုပ်ပါ
+# Google Drive ထဲ ဖိုင်ကို အပ်လုဒ်လုပ်ပါ (သတ်မှတ်ထားတဲ့ folder ထဲ)
 def upload_to_drive(file_path, file_name):
     try:
         service = get_drive_service()
-        file_metadata = {'name': file_name}
+        # ဖိုင်ကို သတ်မှတ်ထားတဲ့ folder ထဲ ထည့်ဖို့ parents field ထည့်ပါ
+        file_metadata = {
+            'name': file_name
+        }
+        # GOOGLE_DRIVE_FOLDER_ID ရှိမရှိ စစ်ဆေးပြီး ရှိရင် parents field ထည့်ပါ
+        if GOOGLE_DRIVE_FOLDER_ID:
+            file_metadata['parents'] = [GOOGLE_DRIVE_FOLDER_ID]
+            print(f"Uploading {file_name} to Google Drive folder ID {GOOGLE_DRIVE_FOLDER_ID}...")
+        else:
+            print(f"No folder ID specified, uploading {file_name} to Google Drive root...")
+
         media = MediaFileUpload(file_path, resumable=True)
         request = service.files().create(
             body=file_metadata,
@@ -87,14 +100,21 @@ def upload_to_drive(file_path, file_name):
         print(f"File uploaded to Google Drive with ID: {file_id}")
 
         # ဖိုင်ကို မျှဝေလို့ရအောင် လုပ်ပါ
-        service.permissions().create(
-            fileId=file_id,
-            body={'role': 'reader', 'type': 'anyone'},
-            fields='id'
-        ).execute()
+        try:
+            service.permissions().create(
+                fileId=file_id,
+                body={'role': 'reader', 'type': 'anyone'},
+                fields='id'
+            ).execute()
+            print(f"Permission set for file ID: {file_id}")
+        except Exception as e:
+            print(f"Error setting permission for file ID {file_id}: {str(e)}")
+            # Permission သတ်မှတ်မှု မအောင်မြင်ရင်တောင် လင့်ခ်ကို ပြန်ပေးမယ်
 
         # Google Drive လင့်ခ်ကို ပြန်ပေးပါ
-        return f"https://drive.google.com/file/d/{file_id}/view"
+        drive_link = f"https://drive.google.com/file/d/{file_id}/view"
+        print(f"Returning Google Drive link: {drive_link}")
+        return drive_link
     except Exception as e:
         print(f"Error uploading to Google Drive: {str(e)}")
         return None
